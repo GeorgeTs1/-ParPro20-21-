@@ -1,13 +1,11 @@
 #include <stdio.h>
 #include <math.h>
-#include<time.h>
-#include<omp.h>
+#include <time.h>
 
 #define      VARS		(250)	/* max # of variables	     */
-#define      RHO_BEGIN		(0.5)	/* stepsize geometric shrink */
+#define      RHO_BEGIN	(0.5)	/* stepsize geometric shrink */
 #define      EPSMIN		(1E-6)	/* ending value of stepsize  */
 #define      IMAX		(5000)	/* max # of iterations	     */
-#define      NTRAILS    (10) /*max number of points     */
 
 /* global variables */
 /* global variables */
@@ -23,13 +21,21 @@ double
 f(x, n)
 	   double	   x[VARS];
 	   int		   n;
-{
+{	   int         m;
 	   double	   a, b, c;
+	   double      value=0;;
 	   funevals++;
 	   a = x[0];
 	   b = x[1];
-	   c = 100.0 * (b - (a * a)) * (b - (a * a));
-	   return (c + ((1.0 - a) * (1.0 - a)));
+	   for(m=1; m<n-1; m++)
+	   {
+	   		c = 100.0 * (b - (a * a)) * (b - (a * a));
+			value += 	(c + ((1.0 - a) * (1.0 - a)));
+			a=x[m];
+			b=x[m+1];   		
+	   }
+	   
+	   return value;
 }
 
 #endif
@@ -50,12 +56,26 @@ best_nearby(delta, point, prevbest, nvars)
 		   z[i] = point[i];
 	   for (i = 0; i < nvars; i++) {
 		   z[i] = point[i] + delta[i];
-		   
-		   if(z[i]<-4 || z[i]>4)
+
+		   /*if(z[i]<-4.0 || z[i]>4.0)
 		   {
-		   		z[i]=point[i];
-		   }
-		
+		   		z[i]= point[i] - delta[i];
+		   		delta[i] = 0.0 - delta[i];
+		   		z[i] = point[i] + delta[i];
+		   		ftmp = f(z, nvars);
+		   		if (ftmp < minf)
+			        minf = ftmp;
+		   	else {
+			   z[i] =  + delta[i];
+			   ftmp = f(z, nvars);
+			   if (ftmp < minf)
+				   minf = ftmp;
+			   else
+				   z[i] = point[i];
+		   }*/
+		   		
+		   
+		   
 		   ftmp = f(z, nvars);
 		   if (ftmp < minf)
 			   minf = ftmp;
@@ -157,77 +177,81 @@ hooke(nvars, startpt, endpt, rho, epsilon, itermax)
 #ifndef Woods
 main()
 {
-	   int id;
-	   double	   startpt[4][VARS],endpt[4][VARS],tmp_min_f,curr_f;
+	   double	   startpt[VARS], endpt[VARS],tmp_min[VARS],prev_f,curr_f;
 	   int		   nvars, itermax;
 	   double	   rho, epsilon;
-	   int		   i, jj;
-	   int         point,j;
-	   double      tmp_min_x[VARS];
-	   int 		   final_point;
-	   nvars=16;
-	 
+	   int		   i, j,jj;
+	   int         k;
+			
 	   /* starting guess for rosenbrock test function */
-	   
-	   
-	   itermax = IMAX;
+	   nvars = 16;
+		
+		itermax = IMAX;
 	   rho = RHO_BEGIN;
 	   epsilon = EPSMIN;
-	   
-	   srand(1);
-	   
-	   omp_set_num_threads(4);
-	
-	   	#pragma omp parallel private(i) shared(j) 
-	   	{
-			
-		 #pragma omp for
-	      for(i=0; i<NTRAILS; i++)
-			{	
-				id =  omp_get_thread_num();
-				
-				#pragma omp for 
-			    for(j=0; j<nvars; j++)
-			      startpt[id][j]=rand();
-			
-		        jj = hooke(nvars, startpt, endpt, rho, epsilon, itermax);
-				
-		    	printf("\nThread with id = %d finished the method\n",id);
-		    
-				 	
-				if(i==0) 
-				{
-					tmp_min_f = f(endpt[id],nvars);
-					for(j=0; j<nvars; j++)
-					{
-						tmp_min_x[j]=endpt[id][j];
-					}		
-				}
-			
-				else
-				{	
-					curr_f = f(endpt[id],nvars);
-					if(tmp_min_f>curr_f)
-					{
-						tmp_min_f = curr_f;
-						for(j=0; j<nvars; j++)
-						{
-							tmp_min_x[j]=endpt[id][j];	
-						}
-			 		}
-	  		    }
-		    }
-		}
-	   	
-	   
-	   for (i = 0; i < nvars; i++)
-		   printf("x[%3d] = %15.7le \n", i,tmp_min_x[i]);
+		
+		
+		srand(1);
+		
 
-	 	
-	  
-	   printf("\n\n\nHOOKE USED %d ITERATIONS, AND RETURNED\n", jj);
-}
+		for(i=0; i<10; i++)	
+		{
+			for(j=0; j<16; j++)
+			{
+				startpt[j]= rand()%8 -4;
+				printf("\nStartpt[%d]=%lf\n",j,startpt[j]);
+			}
+				
+			jj =hooke(nvars, startpt, endpt, rho, epsilon, itermax);
+			
+			if(i==0)
+			{
+				prev_f = f(endpt,nvars);
+				
+				printf("\nPREV_F=%lf\n",prev_f);
+				
+				for(k=0; k<16; k++)
+				{
+					tmp_min[k] = endpt[k];
+					
+				}
+				
+			}
+			
+			else
+			{
+				curr_f = f(endpt,nvars);
+				
+				for(k=0; k<16; k++)
+					printf("   x[%2d] = %.4le\n", k, endpt[k]);
+				
+				if(curr_f < prev_f)
+				{
+					for(k=0; k<16; k++)
+					{
+					     tmp_min[k] = endpt[k];
+					}
+					
+					prev_f = curr_f;
+					
+				}
+				
+				else if(curr_f == prev_f)
+				{		
+						prev_f=curr_f;
+						continue;
+				}	
+			
+			}
+		}
+
+
 	   
+	   
+	   printf("\n\n\nHOOKE USED %d ITERATIONS, AND RETURNED\n", jj);
+	   for (i = 0; i < nvars; i++)
+		   printf("x[%3d] = %15.7le \n f=%lf\n", i, tmp_min[i],prev_f);
+}
 #else
 /* The Hooke & Jeeves algorithm works reasonably well on
  * Rosenbrock's function, but can fare worse on some
@@ -240,48 +264,5 @@ main()
 #define RHO_WOODS 0.6
 #endif
 
-/* Woods -- a la More, Garbow & Hillstrom (TOMS algorithm 566) */
 
-/*double
-f(x, n)
-	double	x[VARS];
-	int	n;
-{
-	double	s1, s2, s3, t1, t2, t3, t4, t5;
-	funevals++;
-	s1 = x[1] - x[0]*x[0];
-	s2 = 1 - x[0];
-	s3 = x[1] - 1;
-	t1 = x[3] - x[2]*x[2];
-	t2 = 1 - x[2];
-	t3 = x[3] - 1;
-	t4 = s3 + t3;
-	t5 = s3 - t3;
-	return 100*(s1*s1) + s2*s2 + 90*(t1*t1) + t2*t2
-		+ 10*(t4*t4) + t5*t5/10.;
-}
-
-main()
-{
-	double	startpt[VARS], endpt[VARS];
-	int	nvars, itermax;
-	double	rho, epsilon;
-	int	i, jj;
-
-	/* starting guess test problem "Woods" */
-	/*nvars = 4;
-	startpt[0] = -3;
-	startpt[1] = -1;
-	startpt[2] = -3;
-	startpt[3] = -1;
-
-	itermax = IMAX;
-	rho = RHO_WOODS;
-	epsilon = EPSMIN;
-	jj = hooke(nvars, startpt, endpt, rho, epsilon, itermax);
-	printf("\n\n\nHOOKE USED %d ITERATIONS, AND RETURNED\n", jj);
-	for (i = 0; i < nvars; i++)
-		printf("x[%3d] = %15.7le \n", i, endpt[i]);
-	printf("True answer: f(1, 1, 1, 1) = 0.\n");
-}*/
-#endif  
+#endif
