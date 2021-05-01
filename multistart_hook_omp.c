@@ -3,12 +3,13 @@
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
+#include <omp.h>
 
 #define MAXVARS		(250)	/* max # of variables	     */
 #define RHO_BEGIN	(0.5)	/* stepsize geometric shrink */
 #define EPSMIN		(1E-6)	/* ending value of stepsize  */
 #define IMAX		(5000)	/* max # of iterations	     */
-#define NUM_THREADS (4)     /* Num of Threads */
+#define NUM_THREADS     (2)
 
 /* global variables */
 unsigned long funevals = 0;
@@ -23,7 +24,7 @@ double f(double *x, int n)
 	funevals++;
     fv = 0.0;
     for (i=0; i<n-1; i++)   /* rosenbrock */
-        fv = fv + 100.0*pow((x[i+1]-x[i]*x[i]),2) + pow((x[i]-1.0),2);
+        fv = fv + 100.0* pow((x[i+1]-x[i]*x[i]),2) + pow((x[i]-1.0),2);
 
     return fv;
 }
@@ -150,14 +151,14 @@ double get_wtime(void)
 
 int main(int argc, char *argv[])
 {
-	double startpt[NUM_THREADS][MAXVARS], endpt[NUM_THREADS][MAXVARS];
+	double startpt[MAXVARS], endpt[MAXVARS];
 	int itermax = IMAX;
 	double rho = RHO_BEGIN;
 	double epsilon = EPSMIN;
 	int nvars;
 	int trial, ntrials;
 	double fx;
-	int i, jj[NUM_THREADS];
+	int i, jj;
 	double t0, t1;
 
 	double best_fx = 1e10;
@@ -169,50 +170,43 @@ int main(int argc, char *argv[])
 
 	ntrials = 128*1024;	/* number of trials */
 	nvars = 16;		/* number of variables (problem dimension) */
-	srand(time(0));
-	
-	omp_set_num_threads(NUM_THREADS);
+	srand48(time(0));
 
 	t0 = get_wtime();
-	
-	#pragma omp parallel private(i) shared(trial)
-	{
-		int id = omp_get_thread_num();
-		
-	 #pragma omp for
+
+	omp_set_num_threads(NUM_THREADS);
+
+	#pragma omp parallel for private(i,jj,fx,trial,startpt,endpt) firstprivate(ntrials,nvars,rho,epsilon,itermax) shared(best_fx,best_trial,best_jj,best_pt) 
 	for (trial = 0; trial < ntrials; trial++) {
 		/* starting guess for rosenbrock test function, search space in [-4, 4) */
+		
+		#pragma omp parallel for
 		for (i = 0; i < nvars; i++) {
-			startpt[id][i] = 4.0*rand()-4.0;
+			startpt[i] = 4.0*drand48()-4.0;
 		}
 
-		jj[id] = hooke(nvars, startpt[id], endpt[id], rho, epsilon, itermax);
+
+		jj = hooke(nvars, startpt, endpt, rho, epsilon, itermax);
 #if DEBUG
-		printf("\n\n\nHOOKE %d USED %d ITERATIONS, AND RETURNED\n", trial, jj[id]);
-		
-		#pragma omp for
+		printf("\n\n\nHOOKE %d USED %d ITERATIONS, AND RETURNED\n", trial, jj);
 		for (i = 0; i < nvars; i++)
-			printf("x[%3d] = %15.7le \n", i, endpt[id][i]);
+			printf("x[%3d] = %15.7le \n", i, endpt[i]);
 #endif
 
-		fx = f(endpt[id], nvars);
+		fx = f(endpt, nvars);
 #if DEBUG
 		printf("f(x) = %15.7le\n", fx);
 #endif
-		#pragma omp critical
-		{
-
-			if (fx < best_fx) {
-				best_trial = trial;
-				best_jj = jj[id];
-				best_fx = fx;
-				for (i = 0; i < nvars; i++)
-					best_pt[i] = endpt[id][i];
-			}
-		}
-	
-	   }
-   }	
+	    #pragma omp critical
+	   {    
+		if (fx < best_fx) {
+			best_trial = trial;
+			best_jj = jj;
+			best_fx = fx;
+			for (i = 0; i < nvars; i++)
+				best_pt[i] = endpt[i];   
+	   }	}
+	}
 	t1 = get_wtime();
 
 	printf("\n\nFINAL RESULTS:\n");
