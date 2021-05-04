@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -20,7 +21,6 @@ double f(double *x, int n)
 {
     double fv;
     int i;
-
 	funevals++;
     fv = 0.0;
     for (i=0; i<n-1; i++)   /* rosenbrock */
@@ -168,20 +168,31 @@ int main(int argc, char *argv[])
 
 	for (i = 0; i < MAXVARS; i++) best_pt[i] = 0.0;
 
-	ntrials = 128*1024;	/* number of trials */
+	ntrials = 128;	/* number of trials */
 	nvars = 16;		/* number of variables (problem dimension) */
-	srand48(time(0));
+	srand48(1);
 
 	t0 = get_wtime();
 
 	omp_set_num_threads(NUM_THREADS);
 
-	#pragma omp parallel for private(i,jj,fx,trial,startpt,endpt) firstprivate(ntrials,nvars,rho,epsilon,itermax) shared(best_fx,best_trial,best_jj,best_pt) 
-	for (trial = 0; trial < ntrials; trial++) {
+	#pragma omp parallel  private(jj,fx,startpt,endpt) firstprivate(ntrials,nvars,rho,epsilon,itermax) shared(best_fx,best_trial,best_jj,best_pt) 
+	{
+		int id = omp_get_thread_num();
+		int Nthrds = omp_get_num_threads();
+		int istart = id * ntrials / NUM_THREADS;
+		int iend = (id+1) * ntrials / NUM_THREADS; 
+		if (id == omp_get_num_threads()-1) iend = ntrials;
+		int istart1 = id * nvars / NUM_THREADS;
+                int iend1 = (id+1) * nvars / NUM_THREADS; 
+                if (id == omp_get_num_threads()-1) iend1 = nvars;
+
+		
+
+		for (trial = istart; trial < iend; trial++) {
 		/* starting guess for rosenbrock test function, search space in [-4, 4) */
 		
-		#pragma omp parallel for
-		for (i = 0; i < nvars; i++) {
+		for (i = istart1; i < iend1; i++) {
 			startpt[i] = 4.0*drand48()-4.0;
 		}
 
@@ -189,7 +200,7 @@ int main(int argc, char *argv[])
 		jj = hooke(nvars, startpt, endpt, rho, epsilon, itermax);
 #if DEBUG
 		printf("\n\n\nHOOKE %d USED %d ITERATIONS, AND RETURNED\n", trial, jj);
-		for (i = 0; i < nvars; i++)
+		for (i = istart1; i < iend1; i++)
 			printf("x[%3d] = %15.7le \n", i, endpt[i]);
 #endif
 
@@ -204,9 +215,16 @@ int main(int argc, char *argv[])
 			best_jj = jj;
 			best_fx = fx;
 			for (i = 0; i < nvars; i++)
-				best_pt[i] = endpt[i];   
-	   }	}
+				best_pt[i] = endpt[i];  
+		}
+
+	    }
+
+
 	}
+
+}
+
 	t1 = get_wtime();
 
 	printf("\n\nFINAL RESULTS:\n");
