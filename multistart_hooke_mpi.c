@@ -29,12 +29,13 @@ double f(double *x, int n)
 }
 
 /* given a point, look for a better one nearby, one coord at a time */
-double best_nearby(double delta[MAXVARS], double point[MAXVARS], double prevbest, int nvars,int id,int procs)
+double best_nearby(double delta[MAXVARS], double point[MAXVARS], double prevbest, int nvars,int myid,int procs)
 {
 	double z[MAXVARS];
-	double minf, ftmp;
+	double minf[2], ftmp;
 	int i;
-	minf = prevbest;
+	minf[0] = prevbest;
+	minf[1] = prevbest;
 	
 	int start,end;	
 	
@@ -45,20 +46,19 @@ double best_nearby(double delta[MAXVARS], double point[MAXVARS], double prevbest
 
 
 
-
 	for (i = start; i < end; i++)
 		z[i] = point[i];
 	for (i = start; i < end; i++) {
 		z[i] = point[i] + delta[i];
 		ftmp = f(z, nvars);
-		if (ftmp < minf)
-			minf = ftmp;
+		if (ftmp < minf[myid])
+			minf[myid] = ftmp;
 		else {
 			delta[i] = 0.0 - delta[i];
 			z[i] = point[i] + delta[i];
 			ftmp = f(z, nvars);
-			if (ftmp < minf)
-				minf = ftmp;
+			if (ftmp < minf[myid])
+				minf[myid] = ftmp;
 			else
 				z[i] = point[i];
 		}
@@ -69,17 +69,17 @@ double best_nearby(double delta[MAXVARS], double point[MAXVARS], double prevbest
     
 	
 
-	return (minf);
+	return (minf[myid]);
 }
 
 
-int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho, double epsilon, int itermax,int id,int procs)
+int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho, double epsilon, int itermax,int myid,int procs)
 {
 	double delta[MAXVARS];
 	double newf, fbefore, steplength, tmp;
 	double xbefore[MAXVARS], newx[MAXVARS];
 	int i, j, keep;
-	int iters, iadj;
+	int iters[2], iadj;
 
 
 	int start,end;
@@ -87,6 +87,8 @@ int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho,
  
         start=0;
 	end=nvars;
+
+
 
 
 
@@ -98,11 +100,11 @@ int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho,
 	}
 	iadj = 0;
 	steplength = rho;
-	iters = 0;
+	iters[myid] = 0;
 	fbefore = f(newx, nvars);
 	newf = fbefore;
-	while ((iters < itermax) && (steplength > epsilon)) {
-		iters++;
+	while ((iters[myid] < itermax) && (steplength > epsilon)) {
+		iters[myid]++;
 		iadj++;
 #if DEBUG
 		printf("\nAfter %5d funevals, f(x) =  %.4le at\n", funevals, fbefore);
@@ -113,7 +115,7 @@ int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho,
 		for (i = start; i < end; i++) {
 			newx[i] = xbefore[i];
 		}
-		newf = best_nearby(delta, newx, fbefore, nvars,id,procs);
+		newf = best_nearby(delta, newx, fbefore, nvars,myid,procs);
 		/* if we made some improvements, pursue that direction */
 		keep = 1;
 		while ((newf < fbefore) && (keep == 1)) {
@@ -130,7 +132,7 @@ int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho,
 				newx[i] = newx[i] + newx[i] - tmp;
 			}
 			fbefore = newf;
-			newf = best_nearby(delta, newx, fbefore, nvars,id,procs);
+			newf = best_nearby(delta, newx, fbefore, nvars,myid,procs);
 			/* if the further (optimistic) move was bad.... */
 			if (newf >= fbefore)
 				break;
@@ -158,7 +160,7 @@ int hooke(int nvars, double startpt[MAXVARS], double endpt[MAXVARS], double rho,
 	for (i = start; i < end; i++)
 		endpt[i] = xbefore[i];
 
-	return (iters);
+	return (iters[myid]);
 }
 
 
@@ -191,6 +193,7 @@ int main(int argc, char *argv[])
 	int myid;
 	int procs;
 	int start,end;
+	
 
 	for (i = 0; i < MAXVARS; i++) best_pt[i] = 0.0;
 
@@ -238,7 +241,9 @@ int main(int argc, char *argv[])
 		fx = f(endpt, nvars);
 #if DEBUG
 		printf("f(x) = %15.7le\n", fx);
-#endif
+#endif	
+	
+		
 		if (fx < best_fx) {
 			best_trial = trial;
 			best_jj = jj;
@@ -246,10 +251,13 @@ int main(int argc, char *argv[])
 			for (i = 0; i < nvars; i++)
 				best_pt[i] = endpt[i];
 		}
-		
 
 
 	}
+
+
+
+
 	t1 = MPI_Wtime();
 	
 	if(myid!=0)
